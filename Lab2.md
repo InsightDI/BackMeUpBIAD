@@ -1675,4 +1675,4 @@ case PostBackActions.SubmitBackPainData:
 
 Run the solution and test it using Bot Framework Emulator
 
-[<< Home](README.md) | [<Lab 1](Lab1.md) | [Lab 2>](Lab2.md)
+[<< Home](README.md) | [Lab 1](Lab1.md) | Lab 2 | [Lab 3](Lab3.md)

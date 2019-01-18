@@ -526,3 +526,5 @@ You can see utterances that the endpoint received but was not able to match with
 ### Lab3 Module 2 Bonus Exercise 3
 
 Read about phrase lists (https://docs.microsoft.com/en-us/azure/cognitive-services/luis/luis-how-to-add-features).
+
+[<< Home](README.md) | [Lab 1](Lab1.md) | [Lab 2](Lab2.md) | Lab 3
