@@ -18,6 +18,8 @@ This module will walk you through the process of setting up the tools required t
 
 ### Exercise 1: Install Visual Studio (Any Edition)
 
+Any edition of Visual Studio 2017 will work for these labs, but it has not been tested on Visual Studio Code. The documentation for the lab was developed using Visual Studio 2017 Community.
+
 #### L1M1E1 Step 1
 
 Navigate to https://visualstudio.microsoft.com/downloads/
@@ -48,6 +50,8 @@ When it’s done, you’ll be asked to sign in. You can sign in or choose to do 
 
 ### Exercise 2: Install Bot Framework Emulator
 
+The Bot Framework Emulator allows you to test your bot locally.
+
 #### L1M1E2 Step 1
 
 Close Visual Studio and the Visual Studio Installer
@@ -57,6 +61,8 @@ Close Visual Studio and the Visual Studio Installer
 Navigate to https://github.com/Microsoft/BotFramework-Emulator/releases and install the latest version
 
 ### Exercise 3: Install Bot Framework Template for Visual Studio
+
+The Visual Studio templates allow developers quickly create bot projects.
 
 #### L1M1E3 Step 1
 
