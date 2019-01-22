@@ -74,6 +74,8 @@ Navigate to https://botbuilder.myget.org/gallery/aitemplates and choose the late
 
 Download and install
 
+> You will need to exit from all Visual Studio instances before the extension installation will continue.
+
 #### L1M1E3 Step 3
 
 Start Visual Studio (you should not need to restart Windows)
@@ -83,6 +85,8 @@ Start Visual Studio (you should not need to restart Windows)
 In this module, you will create and run a bot using the predefined templates provided to Visual Studio.
 
 ### Exercise 1: Create Basic EchoBot
+
+The basic EchoBot provides developers with a working bot without needing to write any code. We are using this template so that we can see the interaction between the Bot Emulator and the bot application.
 
 #### L1M2E1 Step 1
 
@@ -102,7 +106,11 @@ Start the project
 
 ![Click IIS Express button](images/l1m2-03.png)
 
+> The first time you build/start the app, it may take a few minutes. It will download all of the required NuGet packages to run the application.
+
 ### Exercise 2: Connect to EchoBot and Test It
+
+The bot emulator allows us to test the bot logic locally. In the case of the Echo Bot, we will be able to observe the bot echoing back to the emulator anything we type in.
 
 #### L1M2E2 Step 1
 
