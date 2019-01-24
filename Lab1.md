@@ -100,6 +100,8 @@ Create a new "Bot Builder Echo Bot V4" project
 
 ![Select Bot Builder Echo Bot V4](images/l1m2-02.png)
 
+> As-Of 2019-01-23, this template uses a project file that is configured for .Net Core 2.1.x. For the sake of these exercises, it is not advisable to upgrade. If you want to upgrade your packages, you can do so by editing the project file and changing the "TargetFramework" to "netcoreapp2.2". You may need to download the latest SDK from https://dotnet.microsoft.com/download.
+
 #### L1M2E1 Step 3
 
 Start the project
@@ -144,7 +146,7 @@ Look at how EchoBotAccessors.cs works. Modify it to save the user’s name if th
 
 ### Lab1 Module 2 Bonus Exercise 3
 
-Modify the bot to respond “Hello, it’s nice to meet you” when the user types “hello”, but only the first time the user types “hello”. Double bonus if you have it include the user's name if provided in the previous bonus exercise.
+Modify the bot to respond “Hello, it’s nice to meet you.” when the user types “hello”, but only the first time the user types “hello”. Double bonus if you have it include the user's name if provided in the previous bonus exercise.
 
 ## Module 3: Create a Knowledge Base in Azure
 
@@ -180,19 +182,19 @@ Image | Steps
 
 ### Exercise 4: Create a Knowledge Base
 
-#### L1M3E4 Step 1
+#### L1M3E2 Step 1
 
 Navigate to www.qnamaker.ai, and refresh the page. You should now be able to select the QnA service
 
 ![Connect the QnA Service to Azure](images/l1m3-05.png)
 
-#### L1M3E4 Step 2
+#### L1M3E2 Step 2
 
 Name your KB. For this exercise, any name will do
 
 ![Name the KB](images/l1m3-06.png)
 
-#### L1M3E4 Step 3
+#### L1M3E2 Step 3
 
 Skip "STEP 4". Click "Create your KB" in "STEP 5"
 
@@ -200,7 +202,7 @@ Skip "STEP 4". Click "Create your KB" in "STEP 5"
 
 ### Exercise 5: Add Questions and Answers to Knowledge Base
 
-#### L1M3E5 Step 1
+#### L1M3E3 Step 1
 
 Click "Add QnA pair"
 
@@ -220,6 +222,8 @@ Image | Step
 
 When inspecting the answer to “Do you have a name?” Have HAL9000 answer “Yes, I have a name. My friends call me HAL. You may call me HAL9000.”
 
+> Hint: In the "Answer" section of the inspect window, you can enter an alternative answer. Don't forget to "Save and train" to see your result.
+
 ### Lab1 Module 3 Bonus Exercise 2
 
 Brainstorm with a partner to add alternative phrasings to the name question
@@ -232,43 +236,201 @@ Explore the Settings section of your KB. Export the knowledge base file and insp
 
 In this module, we create a new QnA service and import a pre-configured file. We then will create a new bot project and connect it to the QnA service.
 
-### Exercise 1: Import & Publish QnA
+### Exercise 1: Bootstrap the Bot Properly
+
+Bootstrapping your bot service requires familiarity with ASP.Net Core 2.x middleware. This exercise will help you understand some of the most basic middleware configuration for the Bot Framework. It will also correct some of the deficiencies in the template's base configuration code.
 
 #### L1M4E1 Step 1
+
+Rename the class `HalBot9000Bot` to simply `HalBot`. Rename the file HalBot.cs
+
+#### L1M4E1 Step 2
+
+Create a folder called State, and add a file named `UserProfile.cs`. Add the following code:
+
+``` csharp
+namespace HalBot9000.State
+{
+    public class UserProfile
+    {
+        public string Name { get; set; }
+    }
+}
+```
+
+> A state file is a simple object that stores state. There are [three built-in scopes for state](https://docs.microsoft.com/en-us/azure/bot-service/bot-builder-concept-state?view=azure-bot-service-4.0#state-management): User, Conversation, and Private Conversation. In addition, there are [three built-in options for state storage](https://docs.microsoft.com/en-us/azure/bot-service/bot-builder-concept-state?view=azure-bot-service-4.0#storage-layer): Memory, Azure Blob, and Cosmos DB. For the purpose of this module, we will only be using User scope and Memory storage.
+
+#### L1M4E1 Step 3
+
+Replace the code in `HalBot9000Accessors.cs` with the following:
+
+``` csharp
+using System;
+using HalBot9000.State;
+using Microsoft.Bot.Builder;
+
+namespace HalBot9000
+{
+    public class HalBot9000Accessors
+    {
+        public HalBot9000Accessors(UserState userState)
+        {
+            UserState = userState ?? throw new ArgumentNullException(nameof(userState));
+        }
+
+        public static string UserProfileStateName { get; } = $"{nameof(HalBot9000Accessors)}.UserProfileState";
+
+        public IStatePropertyAccessor<UserProfile> UserProfile { get; set; }
+
+        public UserState UserState { get; }
+    }
+}
+```
+
+> `IStateProperyAccessor` will manage the lifecycle of the state object. We'll inject `HalBot9000Accessors` into our bot class, and get state from the exposed `IStatePropertyAccessor` properties. This takes advantage of the ASP.Net Core middleware architecture to simplify consumption on the bot. While it may seem a little contrived at first, the downstream benefits in terms of productivity are significant.
+
+#### L1M4E1 Step 4
+
+In `Startup.cs`, replace the contents of the method `ConfigureServices` with the following:
+
+``` csharp
+// We're going to use MemoryStorage here. This is really only suitable for development.
+// In a future lab, we'll switch to more robust options.
+IStorage storage = new MemoryStorage();
+
+// Configures the bot
+services.AddBot<HalBot9000Bot>(options =>
+{
+    var secretKey = Configuration.GetSection("botFileSecret")?.Value;
+    var botFilePath = Configuration.GetSection("botFilePath")?.Value;
+
+    // Loads .bot configuration file and adds a singleton that your Bot can access through dependency injection.
+    var botConfig = BotConfiguration.Load(botFilePath ?? @".\HalBot9000.bot", secretKey);
+    services.AddSingleton(sp =>
+        botConfig ??
+        throw new InvalidOperationException("The .bot config file could not be loaded."));
+
+    // Retrieve current endpoint.
+    var environment = _isProduction ? "production" : "development";
+    var service =
+        botConfig.Services.FirstOrDefault(s => s.Type == "endpoint" && s.Name == environment);
+    if (!(service is EndpointService endpointService))
+        throw new InvalidOperationException(
+            $"The .bot file does not contain an endpoint with name '{environment}'.");
+
+    options.CredentialProvider =
+        new SimpleCredentialProvider(endpointService.AppId, endpointService.AppPassword);
+
+    // Creates a logger for the application to use.
+    ILogger logger = _loggerFactory.CreateLogger<HalBot9000Bot>();
+
+    // Catches any errors that occur during a conversation turn and logs them.
+    options.OnTurnError = async (context, exception) =>
+    {
+        logger.LogError($"Exception caught : {exception}");
+        await context.SendActivityAsync("Sorry, it looks like something went wrong.");
+    };
+});
+
+// This adds a singleton instance of HalBot9000Accessors to dependency injection
+services.AddSingleton(sp =>
+{
+    // Initializes the user state object. This manages the lifecycle of objects scoped to a user.
+    var userState = new UserState(storage);
+
+    // Creates a property accessor for UserProfile that is scoped to the user
+    var userProfilePropertyAccessor =
+        userState.CreateProperty<UserProfile>(HalBot9000Accessors.UserProfileStateName);
+
+    var accessors = new HalBot9000Accessors(userState)
+    {
+        UserProfile = userProfilePropertyAccessor
+    };
+
+    return accessors;
+});
+```
+
+> As of 2019-01-23, the EchoBot template uses an obsolete method for managing state objects. This code is aligned with the documented best practices, which relies on the dependency injection middleware to simplify access to the property accessors.
+
+#### L1M4E1 Step 5
+
+In `HalBot.cs`, replace the contents of `OnTurnAsync` with the following code:
+
+``` csharp
+if (turnContext.Activity.Type == ActivityTypes.Message)
+{
+    // Get the state from the accessor. If it doesn't exist in this context, create it.
+    // Note, the creation of the state object should only be done in the "defaultValueFactory" parameter.
+    // If you create it outside of that Func, it won't be scoped properly.
+    var state = await _accessors.UserProfile.GetAsync(turnContext, () => new UserProfile(), cancellationToken);
+
+    // Bump the user's total turn count.
+    state.TotalTurnCount++;
+
+    // Set the property using the accessor.
+    await _accessors.UserProfile.SetAsync(turnContext, state, cancellationToken);
+
+    // Save the new turn count into the user state.
+    await _accessors.UserState.SaveChangesAsync(turnContext, cancellationToken: cancellationToken);
+
+    // Echo back to the user whatever they typed.
+    var responseMessage = $"Total turns {state.TotalTurnCount}: You sent '{turnContext.Activity.Text}'\n";
+    await turnContext.SendActivityAsync(responseMessage, cancellationToken: cancellationToken);
+}
+else
+{
+    await turnContext.SendActivityAsync($"{turnContext.Activity.Type} event detected", cancellationToken: cancellationToken);
+}
+```
+
+> Some differences from the template: 1) Added cancellationToken to any async call to follow best practices. 2) Switched from ConversationState to UserState to simplify things. We'll add ConversationState back later.
+
+#### L1M4E1 Step 6
+
+Delete the file CounterState.cs
+
+#### L1M4E1 Step 7
+
+Run the code and test the bot using the Bot Framework Emulator.
+
+### Exercise 2: Import & Publish QnA
+
+#### L1M4E2 Step 1
 
 In QnA Maker (www.qnamaker.ai), click “Create a new knowledge base”
 
 ![Create a knowledge base link](images/l1m4-01.png)
 
-#### L1M4E1 Step 2
+#### L1M4E2 Step 2
 
 Select the options for "STEP 2"
 
 ![Select a QnA service](images/l1m4-02.png)
 
-#### L1M4E1 Step 3
+#### L1M4E2 Step 3
 
 Name the KB "HAL Bot 9000"
 
 ![Name the KB](images/l1m4-03.png)
 
-#### L1M4E1 Step 4
+#### L1M4E2 Step 4
 
 In "STEP 4", you can connect to a URL or upload a file during setup. We'll skip this step and connect after the KB is set up.
 
-#### L1M4E1 Step 5
+#### L1M4E2 Step 5
 
 In "STEP 5", create the KB
 
 ![Create your KB button](images/l1m4-04.png)
 
-#### L1M4E1 Step 6
+#### L1M4E2 Step 6
 
 Go to "Settings"
 
 ![Settings link](images/l1m4-05.png)
 
-#### L1M4E1 Step 7
+#### L1M4E2 Step 7
 
 Add KB file by URL or file
 
@@ -292,59 +454,45 @@ In the “URL” text box, paste the following URL: https://raw.githubuserconten
 
 Click "Save and train"
 
-#### L1M4E1 Step 8
+#### L1M4E2 Step 8
 
 Return to "EDIT" to see the questions and answers populated.
 
-#### L1M4E1 Step 9
+#### L1M4E2 Step 9
 
 Click on "PUBLISH", then on the "Publish" button
 
 ![Publish dialog](images/l1m4-09.png)
 
-### Exercise 2: Create and Prepare Project
+### Exercise 3: Create and Prepare Project
 
-#### 1M4E2 Step 1
+#### L1M4E3 Step 1
 
 Create a new "Bot Builder Echo Bot V4" project
 
 ![New project dialog](images/l1m4-10.png)
 
-#### 1M4E2 Step 2
+#### L1M4E3 Step 2
 
-Change the "Target Framework" to ".Net Core 2.1" in the project properties
-
-![Change .Net Core version](images/l1m4-11.png)
-
-> The current version of the libraries require .NET Core 2.1, so we must update this setting before updating libraries.
-
-#### 1M4E2 Step 3
-
-Click “Managed NuGet Packages” in the “Dependencies” context menu for the project. This is because you won’t be able to update the packages (next step) until you do so.
+Click “Managed NuGet Packages” in the “Dependencies” context menu for the project.
 
 ![Select Manage NuGet Packages](images/l1m4-12.png)
 
-#### 1M4E2 Step 4
-
-You’ll need to update your packages before importing the QnA package
-
-![Update Packages](images/l1m4-13.png)
-
-#### 1M4E2 Step 5
+#### L1M4E3 Step 3
 
 Navigate to “Browse”, and add “Microsoft.Bot.Builder.AI.QnA”
 
 ![Download Package](images/l1m4-14.png)
 
-### Exercise 3: Prepare Project for QnA
+### Exercise 4: Prepare Project for QnA
 
-#### 1M4E3 Step 1
+#### L1M4E4 Step 1
 
 Change the name of EchoWithCounterBot to HalBot
 
-#### 1M4E3 Step 2
+#### L1M4E4 Step 2
 
-Locate “BotConfiguration.bot”. Paste the following configuration at the end of the “services” collection.
+Locate “HalBot9000.bot”. Paste the following configuration at the end of the “services” collection.
 
 ``` json
 {
@@ -357,46 +505,64 @@ Locate “BotConfiguration.bot”. Paste the following configuration at the end 
 }
 ```
 
-#### 1M4E3 Step 3
+#### L1M4E4 Step 3
 
 In the KB you just created on https://www.qnamaker.ai, navigate to “SETTINGS” to get “kbID”, “endpointKey”, and “hostname”
 
 ![Screenshot of settings](images/l1m4-15.png)
 
-### Exercise 4: Add QnAMaker Service
+#### L1M4E4 Step 4
 
-> .Net Core uses dependency injection to provide services to its middleware. We register dependencies using the IServicesCollection interface provided to the ConfigureServices method of Startup.cs.
-
-#### 1M4E4 Step 1
-
-Delete the file EchoBotAccessors.cs
-
-#### 1M4E4 Step 2
-
-Delete the file CounterState.cs
-
-#### 1M4E4 Step 3
-
-Remove the EchoBotAccessors references from HalBot.cs
-
-   1. Remove from constructor signature
-   1. Remove from constructor body
-   1. Remove from fields
-
-#### 1M4E4 Step 4
-
-Open Startup.cs
-
-#### 1M4E4 Step 5
-
-Add a method to configure the bot
+In the `ConfigureServices` method of  `Startup.cs`, find the block that configures the bot `services.AddBot<HalBot>(options =>`. Replace the entire block with the following:
 
 ``` csharp
-private void ConfigureBot(BotFrameworkOptions options, ICredentialProvider credentialProvider)
+// declare these here, so we can add them to the services collection outside of the "AddBot" block.
+// If you try to do "services.AddSingleton" inside of the AddBot block, the HalBot constructor will fail
+// to get the QnAMaker instance
+BotConfiguration botConfig = null;
+QnAMaker qnaMaker = null;
+
+// Configures the bot
+services.AddBot<HalBot>(options =>
 {
-    // Set the CredentialProvider for the bot. It uses this to authenticate with the QnA service in Azure
-    options.CredentialProvider = credentialProvider
-        ?? throw new InvalidOperationException("Missing endpoint information from bot configuraiton file.");
+    var secretKey = Configuration.GetSection("botFileSecret")?.Value;
+    var botFilePath = Configuration.GetSection("botFilePath")?.Value;
+
+    // Loads .bot configuration file and adds a singleton that your Bot can access through dependency injection.
+    botConfig = BotConfiguration.Load(botFilePath ?? @".\HalBot9000.bot", secretKey);
+    
+    // Retrieve current endpoint.
+    var environment = _isProduction ? "production" : "development";
+
+    foreach (var serviceConfig in botConfig.Services)
+    {
+        switch (serviceConfig.Type)
+        {
+            case ServiceTypes.Endpoint:
+                if (serviceConfig is EndpointService endpointService)
+                {
+                    // initialize the credential provider for the bot endpoint
+                    options.CredentialProvider =
+                        new SimpleCredentialProvider(endpointService.AppId, endpointService.AppPassword);
+                }
+                break;
+            case ServiceTypes.QnA:
+                if (serviceConfig is QnAMakerService qnaMakerService)
+                {
+                    // creates a QnA Maker endpoint and allows it to be injected as a singleton
+                    var qnaEndpoint = new QnAMakerEndpoint
+                    {
+                        Host = qnaMakerService.Hostname,
+                        EndpointKey = qnaMakerService.EndpointKey,
+                        KnowledgeBaseId = qnaMakerService.KbId
+                    };
+                    qnaMaker = new QnAMaker(qnaEndpoint);
+                }
+                break;
+            default:
+                throw new NotImplementedException($"The service type {serviceConfig.Type} is not supported by this bot.");
+        }
+    }
 
     // Creates a logger for the application to use.
     ILogger logger = _loggerFactory.CreateLogger<HalBot>();
@@ -407,67 +573,19 @@ private void ConfigureBot(BotFrameworkOptions options, ICredentialProvider crede
         logger.LogError($"Exception caught : {exception}");
         await context.SendActivityAsync("Sorry, it looks like something went wrong.");
     };
+});
 
-    // The Memory Storage used here is for local bot debugging only. When the bot
-    // is restarted, everything stored in memory will be gone.
-    IStorage dataStore = new MemoryStorage();
-
-    // Create Conversation State object.
-    // The Conversation State object is where we persist anything at the conversation-scope.
-    var conversationState = new ConversationState(dataStore);
-
-    options.State.Add(conversationState);
-}
+services.AddSingleton(sp =>
+    botConfig ??
+    throw new InvalidOperationException("The .bot config file could not be loaded."));
+services.AddSingleton(sp =>
+    qnaMaker ?? throw new InvalidOperationException(
+        "The QnAMaker was never initialized. Missing configuration in the .bot config file."));
 ```
 
-#### 1M4E4 Step 6
+> This step accesses the JSON data in the *.bot file to configure the bot. It relies heavily on convention, but works fairly well for simplifying configuration.
 
-Replace the contents of the ConfigureServices method with the following:
-
-``` csharp
-var secretKey = Configuration.GetSection("botFileSecret")?.Value;
-var botFilePath = Configuration.GetSection("botFilePath")?.Value;
-
-// Loads .bot configuration file and adds a singleton that your Bot can access through dependency injection.
-var botConfig = BotConfiguration.Load(botFilePath ?? @".\BotConfiguration.bot", secretKey);
-services.AddSingleton(sp => botConfig ?? throw new InvalidOperationException($"The .bot config file could not be loaded. ({botConfig})"));
-
-// Retrieve current endpoint.
-var environment = _isProduction ? "production" : "development";
-
-ICredentialProvider credentialProvider = null;
-
-foreach (var service in botConfig.Services)
-{
-    switch (service.Type)
-    {
-        case ServiceTypes.Endpoint:
-            if (service is EndpointService endpointService)
-            {
-                credentialProvider = new SimpleCredentialProvider(endpointService.AppId, endpointService.AppPassword);
-            }
-
-            break;
-        case ServiceTypes.QnA:
-            if (service is QnAMakerService qnaMakerService)
-            {
-                var qnaEndpoint = new QnAMakerEndpoint
-                {
-                    Host = qnaMakerService.Hostname,
-                    EndpointKey = qnaMakerService.EndpointKey,
-                    KnowledgeBaseId = qnaMakerService.KbId,
-                };
-                services.AddSingleton(new QnAMaker(qnaEndpoint));
-            }
-
-            break;
-    }
-}
-
-services.AddBot<HalBot>(options => ConfigureBot(options, credentialProvider));
-```
-
-#### 1M4E4 Step 7
+#### L1M4E4 Step 5
 
 Add QnAMaker to the constructor and state of the HalBot class
 
@@ -477,38 +595,43 @@ Add QnAMaker to the constructor and state of the HalBot class
    1. Add to constructor signature
    1. Add to constructor body
 
-#### 1M4E4 Step 8
+#### L1M4E4 Step 6
 
-Replace the contents of the OnTurnAsync method with the following:
+Replace the contents of the method `OnTurnAsync` in `HalBot.cs` with the following:
 
 ``` csharp
+// we only care about messages in this exercise
 if (turnContext.Activity.Type == ActivityTypes.Message)
 {
+    // It's possible to get blank messages.
     if (string.IsNullOrWhiteSpace(turnContext.Activity.Text))
     {
         await turnContext.SendActivityAsync(MessageFactory.Text("This doesn't work unless you say something first."), cancellationToken);
         return;
     }
 
-    var results = await _qnaMaker.GetAnswersAsync(turnContext).ConfigureAwait(false);
+    // Here's where we actually call out to the QnA Maker service to get an answer.
+    var results = await _qnAMaker.GetAnswersAsync(turnContext).ConfigureAwait(false);
 
     if (results.Any())
     {
+        // If there is a result, we get the answer with the highest score (best match)
         var topResult = results.First();
         await turnContext.SendActivityAsync(MessageFactory.Text(topResult.Answer), cancellationToken);
     }
     else
     {
+        // If there's no answer, say so.
         await turnContext.SendActivityAsync(MessageFactory.Text("I'm sorry Dave, I don't understand you."), cancellationToken);
     }
 }
 else
 {
-    await turnContext.SendActivityAsync($"{turnContext.Activity.Type} event detected");
+    await turnContext.SendActivityAsync($"{turnContext.Activity.Type} event detected", cancellationToken: cancellationToken);
 }
 ```
 
-#### 1M4E4 Step 9
+#### L1M4E4 Step 7
 
 Run the code and test the bot using the Bot Framework Emulator.
 
